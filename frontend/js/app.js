@@ -21,6 +21,7 @@ const productDescriptionInput = document.getElementById('productDescription');
 const productPriceInput = document.getElementById('productPrice');
 const productStockInput = document.getElementById('productStock');
 const productCategoryInput = document.getElementById('productCategory');
+const productBrandInput = document.getElementById('productBrand');
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', () => {
@@ -104,6 +105,8 @@ function createProductCard(product) {
             ${escapeHtml(product.description || 'No description available')}
         </div>
         
+        ${product.brand ? `<div class="product-brand"><strong>Brand:</strong> ${escapeHtml(product.brand)}</div>` : ''}
+        
         <div class="product-details">
             <div class="product-price">$${parseFloat(product.price || 0).toFixed(2)}</div>
             <div class="product-stock">
@@ -138,7 +141,8 @@ async function handleFormSubmit(event) {
         description: productDescriptionInput.value.trim(),
         price: parseFloat(productPriceInput.value),
         stock: parseInt(productStockInput.value),
-        category: productCategoryInput.value.trim() || 'General'
+        category: productCategoryInput.value.trim() || 'General',
+        brand: productBrandInput.value.trim() || ''
     };
     
     // Disable submit button during request
@@ -181,6 +185,7 @@ async function editProduct(productId) {
         productPriceInput.value = product.price;
         productStockInput.value = product.stock;
         productCategoryInput.value = product.category || '';
+        productBrandInput.value = product.brand || '';
         
         // Update form UI
         formTitle.textContent = 'Edit Product';

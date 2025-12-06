@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Wireless Gaming Mouse",
+    "description": "RGB LED backlit wireless gaming mouse with 6 programmable buttons, 16000 DPI sensor, and ergonomic design",
+    "price": 49.99,
+    "category": "Mouse",
+    "stock": 150
+  },
+  {
+    "name": "Mechanical Keyboard RGB",
+    "description": "Full-size mechanical keyboard with Cherry MX Blue switches, customizable RGB backlighting, and USB-C connection",
+    "price": 129.99,
+    "category": "Keyboard",
+    "stock": 85
+  },
+  {
+    "name": "USB-C Docking Station",
+    "description": "Universal USB-C hub with dual 4K HDMI, 6 USB ports, Ethernet, SD card reader, and 100W power delivery",
+    "price": 89.99,
+    "category": "Docking Station",
+    "stock": 60
+  },
+  {
+    "name": "Wireless Bluetooth Headset",
+    "description": "Over-ear wireless headset with active noise cancellation, 40-hour battery life, and built-in microphone",
+    "price": 79.99,
+    "category": "Headset",
+    "stock": 120
+  },
+  {
+    "name": "Webcam 1080P HD",
+    "description": "Full HD 1080p webcam with auto-focus, built-in dual microphones, and adjustable clip mount",
+    "price": 59.99,
+    "category": "Webcam",
+    "stock": 95
+  },
+  {
+    "name": "External SSD 1TB",
+    "description": "Portable external solid-state drive with 1TB capacity, USB 3.2 Gen 2, 1050MB/s read speed",
+    "price": 119.99,
+    "category": "Storage",
+    "stock": 75
+  },
+  {
+    "name": "Gaming Mouse Pad XXL",
+    "description": "Extended gaming mouse pad 35.4x15.7 inches with stitched edges and non-slip rubber base",
+    "price": 24.99,
+    "category": "Mouse Pad",
+    "stock": 200
+  },
+  {
+    "name": "USB Condenser Microphone",
+    "description": "Professional USB condenser microphone with cardioid pattern, shock mount, and pop filter",
+    "price": 69.99,
+    "category": "Microphone",
+    "stock": 110
+  },
+  {
+    "name": "Monitor Stand Dual Arm",
+    "description": "Adjustable dual monitor mount with gas spring arms, supports two 27-inch monitors up to 17.6 lbs each",
+    "price": 89.99,
+    "category": "Monitor Stand",
+    "stock": 45
+  },
+  {
+    "name": "Wireless Presenter Remote",
+    "description": "USB wireless presenter with laser pointer, hyperlink control, and 100ft range for presentations",
+    "price": 29.99,
+    "category": "Presenter",
+    "stock": 180
+  }
+]

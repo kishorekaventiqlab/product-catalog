@@ -1,0 +1,21 @@
+GET Single Product
+
+Method: GET
+URL: https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products/xyz1233
+
+Headers: None
+Body: None
+
+Expected Response (200 OK):
+{
+  "product": {
+    "productId": "xyz1233",
+    "name": "Wireless Gaming Mouse",
+    "description": "RGB LED backlit wireless gaming mouse with 6 programmable buttons",
+    "price": 49.99,
+    "category": "Mouse",
+    "stock": 150,
+    "createdAt": 1701331200,
+    "updatedAt": 1701331200
+  }
+}

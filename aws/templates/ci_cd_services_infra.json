@@ -1,0 +1,1326 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "CI/CD Services Stack - CodeArtifact, CodeBuild, CodeDeploy, and CodePipeline for Serverless Product Catalog",
+    "Parameters": {
+        "ProjectName": {
+            "Type": "String",
+            "Default": "product-catalog",
+            "Description": "Project name used for resource naming"
+        },
+        "Environment": {
+            "Type": "String",
+            "Default": "dev",
+            "AllowedValues": [
+                "dev",
+                "staging",
+                "prod"
+            ],
+            "Description": "Environment name"
+        },
+        "GitHubOwner": {
+            "Type": "String",
+            "Description": "GitHub repository owner/organization"
+        },
+        "GitHubRepo": {
+            "Type": "String",
+            "Description": "GitHub repository name"
+        },
+        "GitHubBranch": {
+            "Type": "String",
+            "Default": "main",
+            "Description": "GitHub branch to track"
+        },
+        "BaseStackName": {
+            "Type": "String",
+            "Description": "Name of the base infrastructure stack (for importing S3 bucket references)"
+        },
+        "InfrastructureStackName": {
+            "Type": "String",
+            "Description": "Name of the infrastructure services stack"
+        },
+        "LambdaFunctionName": {
+            "Type": "String",
+            "Description": "Name of the Lambda function to deploy"
+        },
+        "NotificationEmail": {
+            "Type": "String",
+            "Description": "Email address for pipeline notifications",
+            "AllowedPattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+            "ConstraintDescription": "Must be a valid email address"
+        }
+    },
+    "Resources": {
+        "CodeArtifactDomain": {
+            "Type": "AWS::CodeArtifact::Domain",
+            "Properties": {
+                "DomainName": {
+                    "Fn::Sub": "${ProjectName}-domain"
+                },
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CodeArtifactRepository": {
+            "Type": "AWS::CodeArtifact::Repository",
+            "Properties": {
+                "RepositoryName": {
+                    "Fn::Sub": "${ProjectName}-pypi-repo"
+                },
+                "DomainName": {
+                    "Fn::GetAtt": [
+                        "CodeArtifactDomain",
+                        "Name"
+                    ]
+                },
+                "Description": "PyPI package repository for Product Catalog application",
+                "ExternalConnections": [
+                    "public:pypi"
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "GitHubConnection": {
+            "Type": "AWS::CodeStarConnections::Connection",
+            "Properties": {
+                "ConnectionName": {
+                    "Fn::Sub": "${ProjectName}-github-${Environment}"
+                },
+                "ProviderType": "GitHub",
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CodeBuildServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "RoleName": {
+                    "Fn::Sub": "${ProjectName}-codebuild-role-${Environment}"
+                },
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codebuild.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+                ],
+                "Policies": [
+                    {
+                        "PolicyName": "CodeBuildPolicy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:PutObject",
+                                        "s3:GetObjectVersion",
+                                        "s3:DeleteObject",
+                                        "s3:ListBucket"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-ArtifactBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}/*",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-ArtifactBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-LambdaDeploymentBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}/*",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-LambdaDeploymentBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-FrontendBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}/*",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-FrontendBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codeartifact:GetAuthorizationToken",
+                                        "codeartifact:GetRepositoryEndpoint",
+                                        "codeartifact:ReadFromRepository"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "sts:GetServiceBearerToken"
+                                    ],
+                                    "Resource": "*",
+                                    "Condition": {
+                                        "StringEquals": {
+                                            "sts:AWSServiceName": "codeartifact.amazonaws.com"
+                                        }
+                                    }
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codebuild:CreateReportGroup",
+                                        "codebuild:CreateReport",
+                                        "codebuild:UpdateReport",
+                                        "codebuild:BatchPutTestCases"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/*"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "cloudfront:CreateInvalidation",
+                                        "cloudfront:GetInvalidation"
+                                    ],
+                                    "Resource": {
+                                        "Fn::Sub": [
+                                            "arn:aws:cloudfront::${AWS::AccountId}:distribution/${DistributionId}",
+                                            {
+                                                "DistributionId": {
+                                                    "Fn::ImportValue": {
+                                                        "Fn::Sub": "${BaseStackName}-CloudFrontDistributionId"
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CodeBuildProject": {
+            "Type": "AWS::CodeBuild::Project",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${ProjectName}-build-${Environment}"
+                },
+                "Description": "Build project for Product Catalog application",
+                "ServiceRole": {
+                    "Fn::GetAtt": [
+                        "CodeBuildServiceRole",
+                        "Arn"
+                    ]
+                },
+                "Artifacts": {
+                    "Type": "CODEPIPELINE"
+                },
+                "Environment": {
+                    "Type": "LINUX_CONTAINER",
+                    "ComputeType": "BUILD_GENERAL1_SMALL",
+                    "Image": "aws/codebuild/standard:7.0",
+                    "PrivilegedMode": false,
+                    "EnvironmentVariables": [
+                        {
+                            "Name": "CODEARTIFACT_DOMAIN",
+                            "Value": {
+                                "Fn::GetAtt": [
+                                    "CodeArtifactDomain",
+                                    "Name"
+                                ]
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "CODEARTIFACT_REPOSITORY",
+                            "Value": {
+                                "Fn::GetAtt": [
+                                    "CodeArtifactRepository",
+                                    "Name"
+                                ]
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "AWS_ACCOUNT_ID",
+                            "Value": {
+                                "Ref": "AWS::AccountId"
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "AWS_REGION",
+                            "Value": {
+                                "Ref": "AWS::Region"
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "ARTIFACT_BUCKET",
+                            "Value": {
+                                "Fn::ImportValue": {
+                                    "Fn::Sub": "${BaseStackName}-ArtifactBucket"
+                                }
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "LAMBDA_DEPLOYMENT_BUCKET",
+                            "Value": {
+                                "Fn::ImportValue": {
+                                    "Fn::Sub": "${BaseStackName}-LambdaDeploymentBucket"
+                                }
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "FRONTEND_BUCKET",
+                            "Value": {
+                                "Fn::ImportValue": {
+                                    "Fn::Sub": "${BaseStackName}-FrontendBucket"
+                                }
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "CLOUDFRONT_DISTRIBUTION_ID",
+                            "Value": {
+                                "Fn::ImportValue": {
+                                    "Fn::Sub": "${BaseStackName}-CloudFrontDistributionId"
+                                }
+                            },
+                            "Type": "PLAINTEXT"
+                        },
+                        {
+                            "Name": "ENVIRONMENT",
+                            "Value": {
+                                "Ref": "Environment"
+                            },
+                            "Type": "PLAINTEXT"
+                        }
+                    ]
+                },
+                "Source": {
+                    "Type": "CODEPIPELINE",
+                    "BuildSpec": "pipeline/buildspec.yml"
+                },
+                "Cache": {
+                    "Type": "LOCAL",
+                    "Modes": [
+                        "LOCAL_DOCKER_LAYER_CACHE",
+                        "LOCAL_SOURCE_CACHE"
+                    ]
+                },
+                "LogsConfig": {
+                    "CloudWatchLogs": {
+                        "Status": "ENABLED",
+                        "GroupName": {
+                            "Fn::Sub": "/aws/codebuild/${ProjectName}-build-${Environment}"
+                        }
+                    }
+                },
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CodeDeployServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "RoleName": {
+                    "Fn::Sub": "${ProjectName}-codedeploy-role-${Environment}"
+                },
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codedeploy.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForLambda"
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CodeDeployApplication": {
+            "Type": "AWS::CodeDeploy::Application",
+            "Properties": {
+                "ApplicationName": {
+                    "Fn::Sub": "${ProjectName}-app-${Environment}"
+                },
+                "ComputePlatform": "Lambda",
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CodeDeployDeploymentGroup": {
+            "Type": "AWS::CodeDeploy::DeploymentGroup",
+            "Properties": {
+                "ApplicationName": {
+                    "Ref": "CodeDeployApplication"
+                },
+                "DeploymentGroupName": {
+                    "Fn::Sub": "${ProjectName}-deployment-group-${Environment}"
+                },
+                "ServiceRoleArn": {
+                    "Fn::GetAtt": [
+                        "CodeDeployServiceRole",
+                        "Arn"
+                    ]
+                },
+                "DeploymentConfigName": "CodeDeployDefault.LambdaCanary10Percent5Minutes",
+                "AutoRollbackConfiguration": {
+                    "Enabled": true,
+                    "Events": [
+                        "DEPLOYMENT_FAILURE",
+                        "DEPLOYMENT_STOP_ON_ALARM"
+                    ]
+                },
+                "DeploymentStyle": {
+                    "DeploymentType": "BLUE_GREEN",
+                    "DeploymentOption": "WITH_TRAFFIC_CONTROL"
+                }
+            }
+        },
+        "CodePipelineServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "RoleName": {
+                    "Fn::Sub": "${ProjectName}-codepipeline-role-${Environment}"
+                },
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codepipeline.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "CodePipelinePolicy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:PutObject",
+                                        "s3:GetObjectVersion",
+                                        "s3:GetBucketLocation",
+                                        "s3:ListBucket"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-ArtifactBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}/*",
+                                                {
+                                                    "BucketName": {
+                                                        "Fn::ImportValue": {
+                                                            "Fn::Sub": "${BaseStackName}-ArtifactBucket"
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codebuild:BatchGetBuilds",
+                                        "codebuild:StartBuild"
+                                    ],
+                                    "Resource": {
+                                        "Fn::GetAtt": [
+                                            "CodeBuildProject",
+                                            "Arn"
+                                        ]
+                                    }
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codedeploy:CreateDeployment",
+                                        "codedeploy:GetApplication",
+                                        "codedeploy:GetApplicationRevision",
+                                        "codedeploy:GetDeployment",
+                                        "codedeploy:GetDeploymentConfig",
+                                        "codedeploy:RegisterApplicationRevision"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "cloudformation:CreateStack",
+                                        "cloudformation:DeleteStack",
+                                        "cloudformation:DescribeStacks",
+                                        "cloudformation:UpdateStack",
+                                        "cloudformation:CreateChangeSet",
+                                        "cloudformation:DeleteChangeSet",
+                                        "cloudformation:DescribeChangeSet",
+                                        "cloudformation:ExecuteChangeSet",
+                                        "cloudformation:SetStackPolicy",
+                                        "cloudformation:ValidateTemplate"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "lambda:InvokeFunction",
+                                        "lambda:GetFunction"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "iam:PassRole"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codestar-connections:UseConnection"
+                                    ],
+                                    "Resource": {
+                                        "Fn::GetAtt": [
+                                            "GitHubConnection",
+                                            "ConnectionArn"
+                                        ]
+                                    }
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "sns:Publish"
+                                    ],
+                                    "Resource": {
+                                        "Ref": "PipelineNotificationTopic"
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "PipelineNotificationTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "TopicName": {
+                    "Fn::Sub": "${ProjectName}-pipeline-notifications-${Environment}"
+                },
+                "DisplayName": "Pipeline Notifications",
+                "Subscription": [
+                    {
+                        "Endpoint": {
+                            "Ref": "NotificationEmail"
+                        },
+                        "Protocol": "email"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "SourceStageNotificationTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "TopicName": {
+                    "Fn::Sub": "${ProjectName}-source-stage-${Environment}"
+                },
+                "DisplayName": "Source Stage Notifications",
+                "Subscription": [
+                    {
+                        "Endpoint": {
+                            "Ref": "NotificationEmail"
+                        },
+                        "Protocol": "email"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "BuildStageNotificationTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "TopicName": {
+                    "Fn::Sub": "${ProjectName}-build-stage-${Environment}"
+                },
+                "DisplayName": "Build Stage Notifications",
+                "Subscription": [
+                    {
+                        "Endpoint": {
+                            "Ref": "NotificationEmail"
+                        },
+                        "Protocol": "email"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "DeployStageNotificationTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "TopicName": {
+                    "Fn::Sub": "${ProjectName}-deploy-stage-${Environment}"
+                },
+                "DisplayName": "Deploy Stage Notifications",
+                "Subscription": [
+                    {
+                        "Endpoint": {
+                            "Ref": "NotificationEmail"
+                        },
+                        "Protocol": "email"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CodePipeline": {
+            "Type": "AWS::CodePipeline::Pipeline",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${ProjectName}-pipeline-${Environment}"
+                },
+                "RoleArn": {
+                    "Fn::GetAtt": [
+                        "CodePipelineServiceRole",
+                        "Arn"
+                    ]
+                },
+                "ArtifactStore": {
+                    "Type": "S3",
+                    "Location": {
+                        "Fn::ImportValue": {
+                            "Fn::Sub": "${BaseStackName}-ArtifactBucket"
+                        }
+                    }
+                },
+                "Stages": [
+                    {
+                        "Name": "Source",
+                        "Actions": [
+                            {
+                                "Name": "SourceAction",
+                                "ActionTypeId": {
+                                    "Category": "Source",
+                                    "Owner": "AWS",
+                                    "Provider": "CodeStarSourceConnection",
+                                    "Version": "1"
+                                },
+                                "Configuration": {
+                                    "ConnectionArn": {
+                                        "Fn::GetAtt": [
+                                            "GitHubConnection",
+                                            "ConnectionArn"
+                                        ]
+                                    },
+                                    "FullRepositoryId": {
+                                        "Fn::Sub": "${GitHubOwner}/${GitHubRepo}"
+                                    },
+                                    "BranchName": {
+                                        "Ref": "GitHubBranch"
+                                    },
+                                    "OutputArtifactFormat": "CODE_ZIP"
+                                },
+                                "OutputArtifacts": [
+                                    {
+                                        "Name": "SourceOutput"
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "Name": "Build",
+                        "Actions": [
+                            {
+                                "Name": "BuildAction",
+                                "ActionTypeId": {
+                                    "Category": "Build",
+                                    "Owner": "AWS",
+                                    "Provider": "CodeBuild",
+                                    "Version": "1"
+                                },
+                                "Configuration": {
+                                    "ProjectName": {
+                                        "Ref": "CodeBuildProject"
+                                    }
+                                },
+                                "InputArtifacts": [
+                                    {
+                                        "Name": "SourceOutput"
+                                    }
+                                ],
+                                "OutputArtifacts": [
+                                    {
+                                        "Name": "BuildOutput"
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "Name": "Deploy",
+                        "Actions": [
+                            {
+                                "Name": "DeployAction",
+                                "ActionTypeId": {
+                                    "Category": "Deploy",
+                                    "Owner": "AWS",
+                                    "Provider": "CloudFormation",
+                                    "Version": "1"
+                                },
+                                "Configuration": {
+                                    "ActionMode": "CREATE_UPDATE",
+                                    "StackName": {
+                                        "Ref": "InfrastructureStackName"
+                                    },
+                                    "TemplatePath": "BuildOutput::cloudformation/main.json",
+                                    "TemplateConfiguration": {
+                                        "Fn::Sub": "BuildOutput::cloudformation/parameters/${Environment}.json"
+                                    },
+                                    "Capabilities": "CAPABILITY_NAMED_IAM",
+                                    "RoleArn": {
+                                        "Fn::GetAtt": [
+                                            "CloudFormationServiceRole",
+                                            "Arn"
+                                        ]
+                                    }
+                                },
+                                "InputArtifacts": [
+                                    {
+                                        "Name": "BuildOutput"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "CloudFormationServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "RoleName": {
+                    "Fn::Sub": "${ProjectName}-cfn-role-${Environment}"
+                },
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "cloudformation.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/PowerUserAccess"
+                ],
+                "Policies": [
+                    {
+                        "PolicyName": "CloudFormationIAMPolicy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "iam:CreateRole",
+                                        "iam:DeleteRole",
+                                        "iam:GetRole",
+                                        "iam:PassRole",
+                                        "iam:AttachRolePolicy",
+                                        "iam:DetachRolePolicy",
+                                        "iam:PutRolePolicy",
+                                        "iam:DeleteRolePolicy",
+                                        "iam:CreatePolicy",
+                                        "iam:DeletePolicy",
+                                        "iam:GetPolicy",
+                                        "iam:GetPolicyVersion",
+                                        "iam:ListPolicyVersions"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "PipelineSourceEventRule": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${ProjectName}-source-events-${Environment}"
+                },
+                "Description": "Trigger notifications for Source stage events",
+                "EventPattern": {
+                    "source": [
+                        "aws.codepipeline"
+                    ],
+                    "detail-type": [
+                        "CodePipeline Stage Execution State Change"
+                    ],
+                    "detail": {
+                        "pipeline": [
+                            {
+                                "Ref": "CodePipeline"
+                            }
+                        ],
+                        "stage": [
+                            "Source"
+                        ]
+                    }
+                },
+                "State": "ENABLED",
+                "Targets": [
+                    {
+                        "Arn": {
+                            "Ref": "SourceStageNotificationTopic"
+                        },
+                        "Id": "SourceStageNotification"
+                    }
+                ]
+            }
+        },
+        "PipelineBuildEventRule": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${ProjectName}-build-events-${Environment}"
+                },
+                "Description": "Trigger notifications for Build stage events",
+                "EventPattern": {
+                    "source": [
+                        "aws.codepipeline"
+                    ],
+                    "detail-type": [
+                        "CodePipeline Stage Execution State Change"
+                    ],
+                    "detail": {
+                        "pipeline": [
+                            {
+                                "Ref": "CodePipeline"
+                            }
+                        ],
+                        "stage": [
+                            "Build"
+                        ]
+                    }
+                },
+                "State": "ENABLED",
+                "Targets": [
+                    {
+                        "Arn": {
+                            "Ref": "BuildStageNotificationTopic"
+                        },
+                        "Id": "BuildStageNotification"
+                    }
+                ]
+            }
+        },
+        "PipelineDeployEventRule": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${ProjectName}-deploy-events-${Environment}"
+                },
+                "Description": "Trigger notifications for Deploy stage events",
+                "EventPattern": {
+                    "source": [
+                        "aws.codepipeline"
+                    ],
+                    "detail-type": [
+                        "CodePipeline Stage Execution State Change"
+                    ],
+                    "detail": {
+                        "pipeline": [
+                            {
+                                "Ref": "CodePipeline"
+                            }
+                        ],
+                        "stage": [
+                            "Deploy"
+                        ]
+                    }
+                },
+                "State": "ENABLED",
+                "Targets": [
+                    {
+                        "Arn": {
+                            "Ref": "DeployStageNotificationTopic"
+                        },
+                        "Id": "DeployStageNotification"
+                    }
+                ]
+            }
+        },
+        "PipelineOverallEventRule": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${ProjectName}-pipeline-events-${Environment}"
+                },
+                "Description": "Trigger notifications for overall pipeline events",
+                "EventPattern": {
+                    "source": [
+                        "aws.codepipeline"
+                    ],
+                    "detail-type": [
+                        "CodePipeline Pipeline Execution State Change"
+                    ],
+                    "detail": {
+                        "pipeline": [
+                            {
+                                "Ref": "CodePipeline"
+                            }
+                        ]
+                    }
+                },
+                "State": "ENABLED",
+                "Targets": [
+                    {
+                        "Arn": {
+                            "Ref": "PipelineNotificationTopic"
+                        },
+                        "Id": "PipelineOverallNotification"
+                    }
+                ]
+            }
+        },
+        "SNSTopicPolicy": {
+            "Type": "AWS::SNS::TopicPolicy",
+            "Properties": {
+                "Topics": [
+                    {
+                        "Ref": "PipelineNotificationTopic"
+                    },
+                    {
+                        "Ref": "SourceStageNotificationTopic"
+                    },
+                    {
+                        "Ref": "BuildStageNotificationTopic"
+                    },
+                    {
+                        "Ref": "DeployStageNotificationTopic"
+                    }
+                ],
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "events.amazonaws.com"
+                            },
+                            "Action": "sns:Publish",
+                            "Resource": "*"
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "GitHubConnectionArn": {
+            "Description": "ARN of the GitHub CodeStar Connection (complete authorization in AWS Console)",
+            "Value": {
+                "Fn::GetAtt": [
+                    "GitHubConnection",
+                    "ConnectionArn"
+                ]
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-GitHubConnectionArn"
+                }
+            }
+        },
+        "GitHubConnectionStatus": {
+            "Description": "Status of GitHub Connection (PENDING requires manual OAuth authorization)",
+            "Value": {
+                "Fn::GetAtt": [
+                    "GitHubConnection",
+                    "ConnectionStatus"
+                ]
+            }
+        },
+        "CodeArtifactDomainName": {
+            "Description": "CodeArtifact Domain Name",
+            "Value": {
+                "Fn::GetAtt": [
+                    "CodeArtifactDomain",
+                    "Name"
+                ]
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-CodeArtifactDomain"
+                }
+            }
+        },
+        "CodeArtifactRepositoryName": {
+            "Description": "CodeArtifact Repository Name",
+            "Value": {
+                "Fn::GetAtt": [
+                    "CodeArtifactRepository",
+                    "Name"
+                ]
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-CodeArtifactRepository"
+                }
+            }
+        },
+        "CodeBuildProjectName": {
+            "Description": "CodeBuild Project Name",
+            "Value": {
+                "Ref": "CodeBuildProject"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-CodeBuildProject"
+                }
+            }
+        },
+        "CodeDeployApplicationName": {
+            "Description": "CodeDeploy Application Name",
+            "Value": {
+                "Ref": "CodeDeployApplication"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-CodeDeployApplication"
+                }
+            }
+        },
+        "CodePipelineName": {
+            "Description": "CodePipeline Name",
+            "Value": {
+                "Ref": "CodePipeline"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-CodePipeline"
+                }
+            }
+        },
+        "PipelineNotificationTopicArn": {
+            "Description": "SNS Topic ARN for Pipeline Notifications",
+            "Value": {
+                "Ref": "PipelineNotificationTopic"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-PipelineNotificationTopic"
+                }
+            }
+        },
+        "SourceStageTopicArn": {
+            "Description": "SNS Topic ARN for Source Stage Notifications",
+            "Value": {
+                "Ref": "SourceStageNotificationTopic"
+            }
+        },
+        "BuildStageTopicArn": {
+            "Description": "SNS Topic ARN for Build Stage Notifications",
+            "Value": {
+                "Ref": "BuildStageNotificationTopic"
+            }
+        },
+        "DeployStageTopicArn": {
+            "Description": "SNS Topic ARN for Deploy Stage Notifications",
+            "Value": {
+                "Ref": "DeployStageNotificationTopic"
+            }
+        }
+    }
+}

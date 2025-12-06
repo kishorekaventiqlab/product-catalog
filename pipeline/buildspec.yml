@@ -1,0 +1,65 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - echo "Installing build dependencies..."
+      - pip install --upgrade pip
+      
+  pre_build:
+    commands:
+      - echo "Starting pre-build phase..."
+      - echo "Configuring AWS CLI..."
+      - aws --version
+      - echo "Environment - $ENVIRONMENT"
+      - echo "Artifact Bucket - $ARTIFACT_BUCKET"
+      - echo "Lambda Deployment Bucket - $LAMBDA_DEPLOYMENT_BUCKET"
+      - echo "Frontend Bucket - $FRONTEND_BUCKET"
+      - echo "CloudFront Distribution ID - $CLOUDFRONT_DISTRIBUTION_ID"
+      
+  build:
+    commands:
+      - echo "========================================"
+      - echo "Building Lambda Function"
+      - echo "========================================"
+      - cd aws/code
+      - zip -r ../../lambda-deployment-package.zip index.py
+      - cd ../..
+      
+      - echo "========================================"
+      - echo "Uploading Lambda Package to S3"
+      - echo "========================================"
+      - aws s3 cp lambda-deployment-package.zip s3://$LAMBDA_DEPLOYMENT_BUCKET/lambda-deployment-package.zip
+      - echo "Lambda package uploaded successfully"
+      
+      - echo "========================================"
+      - echo "Deploying Frontend to S3"
+      - echo "========================================"
+      - aws s3 sync frontend/ s3://$FRONTEND_BUCKET/ --delete --exclude "*.md"
+      - echo "Frontend files uploaded to S3"
+      
+      - echo "========================================"
+      - echo "Creating CloudFront Invalidation"
+      - echo "========================================"
+      - aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"
+      - echo "CloudFront cache invalidated"
+      
+  post_build:
+    commands:
+      - echo "========================================"
+      - echo "Build Completed Successfully"
+      - echo "========================================"
+      - echo "Lambda Package - s3://$LAMBDA_DEPLOYMENT_BUCKET/lambda-deployment-package.zip"
+      - echo "Frontend URL - https://$(aws cloudfront get-distribution --id $CLOUDFRONT_DISTRIBUTION_ID --query 'Distribution.DomainName' --output text)"
+      - echo "========================================"
+
+artifacts:
+  files:
+    - '**/*'
+  name: BuildArtifact
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'

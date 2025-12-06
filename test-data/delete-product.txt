@@ -1,0 +1,17 @@
+DELETE Product
+
+Method: DELETE
+URL: https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products/xyz1233
+
+Headers: None
+Body: None
+
+Expected Response (200 OK):
+{
+  "message": "Product deleted successfully"
+}
+
+Expected Response (404 Not Found):
+{
+  "error": "Product not found"
+}

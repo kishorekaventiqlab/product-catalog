@@ -1,0 +1,39 @@
+LIST All Products
+
+Method: GET
+URL: https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products
+
+Headers: None
+Body: None
+
+Optional Query Parameters:
+- With limit: ?limit=10
+- With pagination: ?limit=10&lastKey=xyz1233
+
+Examples:
+1. List all products:
+   https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products
+
+2. List 10 products:
+   https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products?limit=10
+
+3. List next page (after xyz1233):
+   https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products?limit=10&lastKey=xyz1233
+
+Expected Response (200 OK):
+{
+  "products": [
+    {
+      "productId": "xyz1233",
+      "name": "Wireless Gaming Mouse",
+      "description": "RGB LED backlit wireless gaming mouse",
+      "price": 49.99,
+      "category": "Mouse",
+      "stock": 150,
+      "createdAt": 1701331200,
+      "updatedAt": 1701331200
+    }
+  ],
+  "count": 1,
+  "lastKey": "xyz1233"
+}

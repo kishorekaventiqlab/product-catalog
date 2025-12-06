@@ -1,0 +1,69 @@
+UPDATE Product (Full Update)
+
+Method: PUT
+URL: https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products/xyz1233
+
+Headers: 
+Content-Type: application/json
+
+Body (Full Update - use update-product.json):
+{
+  "name": "Wireless Gaming Mouse Pro",
+  "description": "Updated RGB LED backlit wireless gaming mouse with 8 programmable buttons and extended battery life",
+  "price": 59.99,
+  "category": "Gaming",
+  "stock": 200
+}
+
+Expected Response (200 OK):
+{
+  "message": "Product updated successfully",
+  "product": {
+    "productId": "xyz1233",
+    "name": "Wireless Gaming Mouse Pro",
+    "description": "Updated RGB LED backlit wireless gaming mouse with 8 programmable buttons and extended battery life",
+    "price": 59.99,
+    "category": "Gaming",
+    "stock": 200,
+    "createdAt": 1701331200,
+    "updatedAt": 1701335000
+  }
+}
+
+---
+
+UPDATE Product (Partial Update)
+
+Method: PUT
+URL: https://vef41juwgj.execute-api.ap-south-1.amazonaws.com/prod/products/xyz1233
+
+Headers: 
+Content-Type: application/json
+
+Body (Partial Update - use update-product-partial.json):
+{
+  "price": 54.99,
+  "stock": 175
+}
+
+Expected Response (200 OK):
+{
+  "message": "Product updated successfully",
+  "product": {
+    "productId": "xyz1233",
+    "name": "Wireless Gaming Mouse",
+    "description": "RGB LED backlit wireless gaming mouse with 6 programmable buttons",
+    "price": 54.99,
+    "category": "Mouse",
+    "stock": 175,
+    "createdAt": 1701331200,
+    "updatedAt": 1701335000
+  }
+}
+
+---
+
+Expected Response (404 Not Found):
+{
+  "error": "Product not found"
+}

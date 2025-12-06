@@ -1,0 +1,395 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Infrastructure Services Stack - Lambda, API Gateway, and DynamoDB for Serverless Product Catalog",
+    "Parameters": {
+        "ProjectName": {
+            "Type": "String",
+            "Default": "product-catalog",
+            "Description": "Project name used for resource naming"
+        },
+        "BaseStackName": {
+            "Type": "String",
+            "Description": "Name of the base infrastructure stack (for importing S3 bucket references)"
+        },
+        "Environment": {
+            "Type": "String",
+            "Default": "dev",
+            "AllowedValues": [
+                "dev",
+                "staging",
+                "prod"
+            ],
+            "Description": "Environment name"
+        },
+        "LambdaRuntime": {
+            "Type": "String",
+            "Default": "python3.12",
+            "AllowedValues": [
+                "python3.11",
+                "python3.12"
+            ],
+            "Description": "Lambda runtime version"
+        }
+    },
+    "Resources": {
+        "ProductCatalogDynamoDBTable": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+                "TableName": {
+                    "Fn::Sub": "${ProjectName}-products-${Environment}"
+                },
+                "BillingMode": "PAY_PER_REQUEST",
+                "AttributeDefinitions": [
+                    {
+                        "AttributeName": "productId",
+                        "AttributeType": "S"
+                    }
+                ],
+                "KeySchema": [
+                    {
+                        "AttributeName": "productId",
+                        "KeyType": "HASH"
+                    }
+                ],
+                "StreamSpecification": {
+                    "StreamViewType": "NEW_AND_OLD_IMAGES"
+                },
+                "PointInTimeRecoverySpecification": {
+                    "PointInTimeRecoveryEnabled": true
+                },
+                "SSESpecification": {
+                    "SSEEnabled": true
+                },
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "LambdaExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "RoleName": {
+                    "Fn::Sub": "${ProjectName}-lambda-execution-role-${Environment}"
+                },
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                ],
+                "Policies": [
+                    {
+                        "PolicyName": "DynamoDBAccess",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "dynamodb:GetItem",
+                                        "dynamodb:PutItem",
+                                        "dynamodb:UpdateItem",
+                                        "dynamodb:DeleteItem",
+                                        "dynamodb:Query",
+                                        "dynamodb:Scan"
+                                    ],
+                                    "Resource": {
+                                        "Fn::GetAtt": [
+                                            "ProductCatalogDynamoDBTable",
+                                            "Arn"
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "ProductAPIFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "FunctionName": {
+                    "Fn::Sub": "${ProjectName}-api-${Environment}"
+                },
+                "Description": "Main API handler for Product Catalog operations",
+                "Runtime": {
+                    "Ref": "LambdaRuntime"
+                },
+                "Handler": "index.lambda_handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "LambdaExecutionRole",
+                        "Arn"
+                    ]
+                },
+                "Code": {
+                    "S3Bucket": {
+                        "Fn::ImportValue": {
+                            "Fn::Sub": "${BaseStackName}-LambdaDeploymentBucket"
+                        }
+                    },
+                    "S3Key": "lambda/product-api.zip"
+                },
+                "MemorySize": 512,
+                "Timeout": 30,
+                "Environment": {
+                    "Variables": {
+                        "TABLE_NAME": {
+                            "Ref": "ProductCatalogDynamoDBTable"
+                        },
+                        "ENVIRONMENT": {
+                            "Ref": "Environment"
+                        }
+                    }
+                },
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "ProductCatalogAPI": {
+            "Type": "AWS::ApiGateway::RestApi",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${ProjectName}-api-${Environment}"
+                },
+                "Description": "REST API for Product Catalog application",
+                "EndpointConfiguration": {
+                    "Types": [
+                        "REGIONAL"
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": {
+                            "Ref": "ProjectName"
+                        }
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": {
+                            "Ref": "Environment"
+                        }
+                    }
+                ]
+            }
+        },
+        "ProductsResource": {
+            "Type": "AWS::ApiGateway::Resource",
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "ProductCatalogAPI"
+                },
+                "ParentId": {
+                    "Fn::GetAtt": [
+                        "ProductCatalogAPI",
+                        "RootResourceId"
+                    ]
+                },
+                "PathPart": "products"
+            }
+        },
+        "ProductsProxyResource": {
+            "Type": "AWS::ApiGateway::Resource",
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "ProductCatalogAPI"
+                },
+                "ParentId": {
+                    "Ref": "ProductsResource"
+                },
+                "PathPart": "{proxy+}"
+            }
+        },
+        "ProductsAnyMethod": {
+            "Type": "AWS::ApiGateway::Method",
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "ProductCatalogAPI"
+                },
+                "ResourceId": {
+                    "Ref": "ProductsProxyResource"
+                },
+                "HttpMethod": "ANY",
+                "AuthorizationType": "NONE",
+                "Integration": {
+                    "Type": "AWS_PROXY",
+                    "IntegrationHttpMethod": "POST",
+                    "Uri": {
+                        "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProductAPIFunction.Arn}/invocations"
+                    }
+                }
+            }
+        },
+        "ProductsRootMethod": {
+            "Type": "AWS::ApiGateway::Method",
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "ProductCatalogAPI"
+                },
+                "ResourceId": {
+                    "Ref": "ProductsResource"
+                },
+                "HttpMethod": "ANY",
+                "AuthorizationType": "NONE",
+                "Integration": {
+                    "Type": "AWS_PROXY",
+                    "IntegrationHttpMethod": "POST",
+                    "Uri": {
+                        "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProductAPIFunction.Arn}/invocations"
+                    }
+                }
+            }
+        },
+        "APIGatewayDeployment": {
+            "Type": "AWS::ApiGateway::Deployment",
+            "DependsOn": [
+                "ProductsAnyMethod",
+                "ProductsRootMethod"
+            ],
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "ProductCatalogAPI"
+                },
+                "StageName": "prod"
+            }
+        },
+        "LambdaAPIPermission": {
+            "Type": "AWS::Lambda::Permission",
+            "Properties": {
+                "FunctionName": {
+                    "Ref": "ProductAPIFunction"
+                },
+                "Action": "lambda:InvokeFunction",
+                "Principal": "apigateway.amazonaws.com",
+                "SourceArn": {
+                    "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProductCatalogAPI}/*/*"
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "DynamoDBTableName": {
+            "Description": "DynamoDB table name for products",
+            "Value": {
+                "Ref": "ProductCatalogDynamoDBTable"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-DynamoDBTable"
+                }
+            }
+        },
+        "DynamoDBTableArn": {
+            "Description": "DynamoDB table ARN",
+            "Value": {
+                "Fn::GetAtt": [
+                    "ProductCatalogDynamoDBTable",
+                    "Arn"
+                ]
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-DynamoDBTableArn"
+                }
+            }
+        },
+        "APIGatewayURL": {
+            "Description": "API Gateway endpoint URL",
+            "Value": {
+                "Fn::Sub": "https://${ProductCatalogAPI}.execute-api.${AWS::Region}.amazonaws.com/prod"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-APIEndpoint"
+                }
+            }
+        },
+        "APIGatewayId": {
+            "Description": "API Gateway REST API ID",
+            "Value": {
+                "Ref": "ProductCatalogAPI"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-APIGatewayId"
+                }
+            }
+        },
+        "ProductAPIFunctionArn": {
+            "Description": "Product API Lambda Function ARN",
+            "Value": {
+                "Fn::GetAtt": [
+                    "ProductAPIFunction",
+                    "Arn"
+                ]
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-ProductAPIFunction"
+                }
+            }
+        },
+        "LambdaExecutionRoleArn": {
+            "Description": "Lambda Execution Role ARN",
+            "Value": {
+                "Fn::GetAtt": [
+                    "LambdaExecutionRole",
+                    "Arn"
+                ]
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-LambdaExecutionRole"
+                }
+            }
+        }
+    }
+}

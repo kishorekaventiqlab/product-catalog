@@ -914,42 +914,6 @@
                                 ]
                             }
                         ]
-                    },
-                    {
-                        "Name": "Deploy",
-                        "Actions": [
-                            {
-                                "Name": "DeployAction",
-                                "ActionTypeId": {
-                                    "Category": "Deploy",
-                                    "Owner": "AWS",
-                                    "Provider": "CloudFormation",
-                                    "Version": "1"
-                                },
-                                "Configuration": {
-                                    "ActionMode": "CREATE_UPDATE",
-                                    "StackName": {
-                                        "Ref": "InfrastructureStackName"
-                                    },
-                                    "TemplatePath": "BuildOutput::cloudformation/main.json",
-                                    "TemplateConfiguration": {
-                                        "Fn::Sub": "BuildOutput::cloudformation/parameters/${Environment}.json"
-                                    },
-                                    "Capabilities": "CAPABILITY_NAMED_IAM",
-                                    "RoleArn": {
-                                        "Fn::GetAtt": [
-                                            "CloudFormationServiceRole",
-                                            "Arn"
-                                        ]
-                                    }
-                                },
-                                "InputArtifacts": [
-                                    {
-                                        "Name": "BuildOutput"
-                                    }
-                                ]
-                            }
-                        ]
                     }
                 ],
                 "Tags": [

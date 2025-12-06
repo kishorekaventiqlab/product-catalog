@@ -73,17 +73,22 @@ This project serves as a hands-on training platform for:
 │                            CI/CD PIPELINE                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
-│  ┌────────┐      ┌──────────────┐      ┌───────────┐      ┌──────────┐ │
-│  │ GitHub │─────▶│ CodePipeline │─────▶│ CodeBuild │─────▶│CodeDeploy│ │
-│  └────────┘      └──────┬───────┘      └─────┬─────┘      └────┬─────┘ │
-│      │                  │                     │                  │       │
-│      │                  │                     │                  │       │
-│      │                  ▼                     ▼                  ▼       │
-│      │            ┌──────────┐         ┌─────────────┐    ┌─────────┐  │
-│      │            │   SNS    │◀────────│CodeArtifact │    │CloudForm│  │
-│      │            │ Alerts   │         │  (packages) │    │  ation  │  │
-│      │            └──────────┘         └─────────────┘    └─────────┘  │
-│      │                  │                                                │
+│  ┌────────┐      ┌──────────────┐      ┌───────────┐                    │
+│  │ GitHub │─────▶│ CodePipeline │─────▶│ CodeBuild │                    │
+│  └────────┘      └──────┬───────┘      └─────┬─────┘                    │
+│      │                  │                     │                           │
+│      │                  │                     │                           │
+│      │                  ▼                     ▼                           │
+│      │            ┌──────────┐         ┌─────────────┐                   │
+│      │            │   SNS    │◀────────│CodeArtifact │                   │
+│      │            │ Alerts   │         │  (packages) │                   │
+│      │            └──────────┘         └─────────────┘                   │
+│      │                  │                     │                           │
+│      │                  │                     ▼                           │
+│      │                  │               ┌──────────┐                      │
+│      │                  │               │    S3    │                      │
+│      │                  │               │ Buckets  │                      │
+│      │                  │               └──────────┘                      │
 └──────┼──────────────────┼────────────────────────────────────────────────┘
        │                  │
        ▼                  ▼
@@ -121,14 +126,15 @@ This project serves as a hands-on training platform for:
 2. **Pipeline Trigger**: GitHub webhook activates CodePipeline via CodeStar Connection
 3. **Source Stage**: Pipeline pulls latest code, SNS notification sent
 4. **Build Stage**: CodeBuild executes buildspec.yml
-   - Packages Lambda function code
+   - Packages Lambda function code into ZIP file
    - Uploads Lambda package to S3 Lambda Deployment Bucket
    - Syncs frontend files (HTML/CSS/JS) to S3 Frontend Bucket
-   - Creates CloudFront cache invalidation for frontend updates
+   - Creates CloudFront cache invalidation for immediate frontend updates
    - Pulls dependencies from CodeArtifact if needed
-5. **Deploy Stage**: 
-   - CloudFormation updates infrastructure (Lambda, API Gateway, DynamoDB)
-   - CodeDeploy performs canary deployment of Lambda function
+5. **Deployment**: Infrastructure is managed separately via CloudFormation stacks
+   - Lambda function references the uploaded S3 package
+   - API Gateway routes requests to Lambda
+   - DynamoDB stores product data
 6. **Runtime**: Users interact with CloudFront → S3 frontend → API Gateway → Lambda → DynamoDB
 7. **Monitoring**: CloudWatch captures logs, metrics, and traces across all services
 
@@ -148,14 +154,14 @@ This project serves as a hands-on training platform for:
 - ✅ **Global CDN** – CloudFront for fast frontend delivery worldwide
 
 ### DevOps Features
-- 🚀 **Automated CI/CD** – End-to-end pipeline from commit to deployment (frontend + backend)
+- 🚀 **Automated CI/CD** – 2-stage pipeline for continuous integration and deployment
 - 📦 **Package Management** – CodeArtifact for dependency caching and version control
 - 🏗️ **Infrastructure as Code** – CloudFormation templates for all resources
-- 🔔 **Multi-Stage Notifications** – SNS alerts at every pipeline phase (Source, Build, Deploy, Success, Failure)
-- 🎯 **Canary Deployments** – Gradual traffic shifting for Lambda updates (Canary10Percent5Minutes)
+- 🔔 **Multi-Stage Notifications** – SNS alerts at pipeline stages (Source, Build, Success, Failure)
+- 🎯 **Modular Deployment** – Separate infrastructure and application deployment workflows
 - 🔐 **Security Best Practices** – IAM least-privilege roles and policies
 - 📊 **CloudWatch Integration** – Centralized logging and monitoring
-- 🔄 **Automatic Rollback** – Failed deployments automatically revert
+- 🔄 **Version Control** – Lambda packages versioned in S3
 - 🧪 **Automated Testing** – Unit tests run before every deployment
 - 📝 **Audit Trail** – Complete deployment history and change tracking
 - ☁️ **Frontend CDN** – CloudFront distribution for global content delivery
@@ -178,9 +184,9 @@ This project serves as a hands-on training platform for:
 | Service | Role in Architecture | Key Features Used |
 |---------|---------------------|-------------------|
 | **GitHub** | Source Code Repository | • Webhook integration for pipeline triggers<br>• Version control and branching<br>• Pull request workflows<br>• Code review capabilities |
-| **CodePipeline** | CI/CD Orchestration | • Multi-stage pipeline automation<br>• Source/Build/Deploy stage management<br>• Manual approval gates (optional)<br>• Integration with SNS for notifications |
-| **CodeBuild** | Build & Test Automation | • Docker-based build environments<br>• buildspec.yml execution<br>• Dependency installation from CodeArtifact<br>• Unit test execution<br>• Artifact packaging |
-| **CodeDeploy** | Deployment Automation | • Lambda deployment with traffic shifting<br>• Canary and Linear deployment strategies<br>• Pre/Post deployment hooks<br>• Automatic rollback on failure |
+| **CodePipeline** | CI/CD Orchestration | • 2-stage pipeline automation (Source → Build)<br>• GitHub webhook integration via CodeStar Connection<br>• Artifact management with S3<br>• Integration with SNS for notifications |
+| **CodeBuild** | Build & Test Automation | • Docker-based build environments<br>• buildspec.yml execution for Lambda packaging<br>• Direct S3 upload for Lambda and frontend files<br>• CloudFront cache invalidation<br>• Dependency installation from CodeArtifact |
+| **CodeDeploy** | Deployment Configuration | • Lambda deployment preferences in CloudFormation<br>• Canary traffic shifting (Canary10Percent5Minutes)<br>• Managed through CloudFormation DeploymentPreference<br>• Automatic rollback on CloudWatch alarms |
 | **CodeArtifact** | Package Repository | • npm/pip package caching<br>• Private package hosting<br>• Integration with public registries<br>• Version control and security scanning |
 
 ### Infrastructure Services
@@ -211,11 +217,15 @@ This project serves as a hands-on training platform for:
 │                                                               │
 │  GitHub ──▶ CodePipeline ──▶ CodeBuild ──▶ CodeArtifact    │
 │                    │              │                          │
-│                    │              └──▶ S3 (Artifacts)        │
+│                    │              ├──▶ S3 (Lambda Package)   │
+│                    │              ├──▶ S3 (Frontend Files)   │
+│                    │              └──▶ CloudFront (Invalidate)│
 │                    │                                          │
-│                    └──▶ CodeDeploy ──▶ Lambda ──▶ DynamoDB  │
-│                           │                                   │
-│                           └──▶ CloudFormation ──▶ All Resources│
+│                    └──▶ SNS (Notifications)                  │
+│                                                               │
+│  CloudFormation ──▶ Lambda ──▶ DynamoDB                     │
+│         │           (References S3 package)                  │
+│         └──▶ API Gateway ──▶ Lambda                          │
 │                                                               │
 │  SNS ◀──── CloudWatch Events ◀──── All CI/CD Services       │
 │                                                               │
@@ -310,10 +320,7 @@ serverless-product-catalog/
 │
 ├── pipeline/                           # CI/CD configuration
 │   ├── buildspec.yml                   # CodeBuild build instructions for Lambda & Frontend
-│   ├── appspec.yml                     # CodeDeploy deployment configuration
 │   ├── pipeline.yaml                   # CodePipeline CloudFormation template
-│   ├── pre-traffic-hook.js             # Lambda hook before traffic shift
-│   ├── post-traffic-hook.js            # Lambda hook after traffic shift
 │   └── test-suite/
 │       ├── smoke-tests.js              # Pre-deployment validation
 │       └── integration-tests.js        # Post-deployment validation
@@ -355,12 +362,10 @@ serverless-product-catalog/
 
 | File | Purpose |
 |------|---------|
-| `buildspec.yml` | Defines CodeBuild phases: packages Lambda, deploys frontend to S3, invalidates CloudFront |
-| `appspec.yml` | Specifies CodeDeploy Lambda deployment config and traffic shifting |
-| `main.yaml/json` | Master CloudFormation template that orchestrates all nested stacks |
-| `pipeline.yaml/json` | Defines complete CI/CD pipeline as CloudFormation template |
-| `deploy.sh` | One-command deployment script for the entire application |
-| `cleanup.sh` | Safely removes all AWS resources to avoid charges |
+| `buildspec.yml` | CodeBuild configuration: packages Lambda to ZIP, uploads to S3, syncs frontend files, invalidates CloudFront cache |
+| `infrastructure_services.json` | CloudFormation template for Lambda, API Gateway, and DynamoDB |
+| `ci_cd_services_infra.json` | CloudFormation template for CI/CD pipeline (CodePipeline, CodeBuild, CodeArtifact, SNS) |
+| `base_infra.json` | CloudFormation template for S3 buckets and CloudFront distribution |
 
 ---
 

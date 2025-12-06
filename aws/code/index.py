@@ -43,6 +43,7 @@ def create_product(body):
             'description': body.get('description', ''),
             'price': Decimal(str(body.get('price', 0))),
             'category': body.get('category', 'General'),
+            'brand': body.get('brand', ''),
             'stock': body.get('stock', 0),
             'createdAt': timestamp,
             'updatedAt': timestamp
@@ -140,6 +141,10 @@ def update_product(product_id, body):
         if 'category' in body:
             update_expr += ", category = :category"
             expr_values[':category'] = body['category']
+        
+        if 'brand' in body:
+            update_expr += ", brand = :brand"
+            expr_values[':brand'] = body['brand']
         
         if 'stock' in body:
             update_expr += ", stock = :stock"

@@ -32,7 +32,7 @@ def create_response(status_code, body):
     }
 
 def create_product(body):
-    """Create a new product"""
+    """Create a new product item"""
     try:
         product_id = str(uuid.uuid4())
         timestamp = int(datetime.now().timestamp())

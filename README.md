@@ -33,7 +33,7 @@ A comprehensive training project demonstrating enterprise-grade DevOps practices
 
 ### What This Project Does
 
-The **Serverless Product Catalog Application** is a full-stack cloud-native solution that enables users to manage product inventory through a RESTful API. The application demonstrates real-world DevOps practices by implementing:
+The **Serverless Product Catalog Application** is a full-stack serverless cloud-native solution that enables users to manage product inventory through a RESTful API. The application demonstrates real-world DevOps practices by implementing:
 
 - **Backend**: AWS Lambda functions providing CRUD operations
 - **Database**: DynamoDB for scalable, serverless data storage
